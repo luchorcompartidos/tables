@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LRWebCatalog Dinámico</title>
+<style>
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #fafafa;
+    margin: 0;
+    padding: 30px 16px;
+  }
+  #sheet-sync-source {
+    max-width: 900px;
+    margin: 0 auto 12px;
+    font-size: 12px;
+    color: #555;
+    word-break: break-all;
+  }
+  #sheet-sync-source a {
+    color: #1a73e8;
+    text-decoration: none;
+  }
+  #sheet-sync-source a:hover {
+    text-decoration: underline;
+  }
+  #sheet-sync-container {
+    max-width: 900px;
+    margin: 0 auto;
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 10px;
+    padding: 20px 24px;
+  }
+  #sheet-sync-container h1 {
+    font-size: 18px;
+    margin: 0 0 16px 0;
+  }
+  .sheet-sync-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .sheet-sync-header span {
+    font-size: 13px;
+    color: #666;
+  }
+  #sheet-sync-refresh {
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid #ccc;
+    background: #f7f7f7;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  #sheet-sync-refresh:hover { background: #eee; }
+  #sheet-sync-count {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 8px;
+  }
+  #sheet-sync-status {
+    font-size: 13px;
+    color: #999;
+    margin-bottom: 8px;
+    min-height: 16px;
+  }
+
+  /* --- Leyendas de columnas ocultas / orden aplicado --- */
+  #sheet-sync-sort-legend,
+  #sheet-sync-hidden-legend {
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: #555;
+  }
+  #sheet-sync-sort-legend a,
+  #sheet-sync-hidden-legend a {
+    color: #1a73e8;
+    text-decoration: none;
+    margin-left: 8px;
+    cursor: pointer;
+  }
+  #sheet-sync-hidden-legend a { margin-left: 0; margin-right: 12px; }
+  #sheet-sync-sort-legend a:hover,
+  #sheet-sync-hidden-legend a:hover {
+    text-decoration: underline;
+  }
+
+  /* --- Vista de tabla --- */
+  #sheet-sync-table-wrapper {
+    overflow: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    max-height: 70vh;
+  }
+  #sheet-sync-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+  }
+  #sheet-sync-table thead th {
+    background: #1a2b1a;
+    color: #fff;
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 12px;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    cursor: pointer;
+    user-select: none;
+    box-shadow: 0 2px 4px -2px rgba(0,0,0,0.35);
+  }
+  #sheet-sync-table thead th:hover {
+    background: #2c452c;
+  }
+  #sheet-sync-table thead th::after {
+    content: " \23f7";
+    font-size: 10px;
+    opacity: 0.6;
+  }
+  #sheet-sync-table tbody td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #eee;
+    vertical-align: top;
+  }
+  #sheet-sync-table tbody tr:nth-child(even) td {
+    background: #fafafa;
+  }
+  #sheet-sync-table tbody tr:nth-child(odd) td {
+    background: #fff;
+  }
+  #sheet-sync-table tbody tr:hover td {
+    background: #f0f4f0;
+  }
+  #sheet-sync-table td a,
+  #sheet-sync-table th a {
+    color: #1a73e8;
+    text-decoration: none;
+  }
+  #sheet-sync-table td a:hover {
+    text-decoration: underline;
+  }
+  .th-badge {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.25);
+    vertical-align: middle;
+  }
+  .th-filter-badge {
+    background: #ffca28;
+    color: #1a2b1a;
+    font-weight: 700;
+  }
+
+  /* --- Inmovilizar (freeze) 1ra columna visible + encabezado --- */
+  .sticky-col {
+    position: sticky;
+    left: 0;
+    box-shadow: 2px 0 4px -2px rgba(0,0,0,0.25);
+  }
+  thead th.sticky-col {
+    z-index: 5;
+    background: #1a2b1a;
+  }
+  tbody td.sticky-col {
+    z-index: 1;
+  }
+  tbody tr:nth-child(even) td.sticky-col {
+    background: #fafafa;
+  }
+  tbody tr:nth-child(odd) td.sticky-col {
+    background: #fff;
+  }
+  tbody tr:hover td.sticky-col {
+    background: #f0f4f0;
+  }
+
+  /* --- Menú desplegable de columna (ordenar / filtrar / ocultar) --- */
+  .col-menu {
+    position: fixed;
+    z-index: 100;
+    display: none;
+    min-width: 230px;
+    max-width: 300px;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+    padding: 6px 0;
+    font-size: 13px;
+    color: #222;
+  }
+  .col-menu .menu-section-title {
+    padding: 6px 12px 2px;
+    font-weight: 700;
+    color: #555;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .col-menu button.menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #222;
+    font-family: inherit;
+  }
+  .col-menu button.menu-item:hover {
+    background: #f2f2f2;
+  }
+  .col-menu hr {
+    border: none;
+    border-top: 1px solid #eee;
+    margin: 4px 0;
+  }
+  .col-menu .menu-active-note {
+    font-size: 11px;
+    color: #a06400;
+    padding: 0 12px 4px;
+  }
+  .col-menu .menu-clear-filter {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 4px 12px 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #1a73e8;
+    font-family: inherit;
+  }
+  .col-menu .menu-clear-filter:hover {
+    text-decoration: underline;
+  }
+  .col-menu .menu-clear-filter:disabled {
+    color: #aaa;
+    cursor: default;
+    text-decoration: none;
+  }
+  .col-menu .menu-filter-list {
+    max-height: 190px;
+    overflow-y: auto;
+    padding: 2px 12px 4px;
+  }
+  .col-menu .menu-filter-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 3px 0;
+    font-size: 12.5px;
+    word-break: break-word;
+    cursor: pointer;
+  }
+  .col-menu .menu-filter-item input {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div id="sheet-sync-source"></div>
+
+<div id="sheet-sync-container">
+  <h1>LR WEB CATALOG Genérico</h1>
+  <div class="sheet-sync-header">
+    <span>Última sincronización: <span id="sheet-sync-time">—</span></span>
+    <button id="sheet-sync-refresh">Actualizar ahora</button>
+  </div>
+  <div id="sheet-sync-count"></div>
+  <div id="sheet-sync-status"></div>
+  <div id="sheet-sync-sort-legend"></div>
+  <div id="sheet-sync-hidden-legend"></div>
+  <div id="sheet-sync-table-wrapper">
+    <table id="sheet-sync-table">
+      <thead>
+        <tr id="sheet-sync-table-head"></tr>
+      </thead>
+      <tbody id="sheet-sync-table-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="sheet-sync-col-menu" class="col-menu"></div>
+
+<script>
+(function () {
+  // --- Configuración ---
+  // Esta app NO busca columnas por nombre. Toma todas las columnas que
+  // existan en la planilla, en el orden en que aparezcan, y decide cómo
+  // mostrar cada valor según su propio contenido (por ejemplo, si "parece"
+  // una URL o no). Si agregás, quitás o reordenás columnas en la planilla,
+  // la página se adapta sola sin tocar el código.
+  const SHEET_ID = "1dkGOT3XaPuHa8Kpj_UpD_sKkSGCs_1P5HyL_Z2IIcmQ";
+  const GID = "0";
+  const REFRESH_MS = 86400000; // vuelve a sincronizar cada 24 horas
+  const URL_REGEX = /^https?:\/\//i;
+
+  // "headers=1" le indica explícitamente a Google que la fila 1 es el
+  // encabezado. Sin este parámetro, si la planilla no lo detecta sola,
+  // los encabezados quedan vacíos y la fila 1 se cuela como si fuera
+  // el primer registro de datos.
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${GID}&headers=1`;
+
+  // Link "humano" a la planilla (para abrirla directamente en Google
+  // Sheets), distinto de la URL técnica de sincronización de arriba.
+  const sheetEditUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit#gid=${GID}`;
+
+  const statusEl = document.getElementById("sheet-sync-status");
+  const timeEl = document.getElementById("sheet-sync-time");
+  const countEl = document.getElementById("sheet-sync-count");
+  const theadRowEl = document.getElementById("sheet-sync-table-head");
+  const tbodyEl = document.getElementById("sheet-sync-table-body");
+  const hiddenLegendEl = document.getElementById("sheet-sync-hidden-legend");
+  const sortLegendEl = document.getElementById("sheet-sync-sort-legend");
+  const wrapperEl = document.getElementById("sheet-sync-table-wrapper");
+  const menuEl = document.getElementById("sheet-sync-col-menu");
+  const sourceLinkEl = document.getElementById("sheet-sync-source");
+
+  // Muestra el link completo a la planilla de origen, arriba del contenedor.
+  sourceLinkEl.innerHTML = `Planilla de origen: <a href="${sheetEditUrl}" target="_blank" rel="noopener">${sheetEditUrl}</a>`;
+
+  // --- Estado en memoria ---
+  // currentHeaders / currentDataRows ya vienen filtrados (sin las columnas
+  // cuyo encabezado está totalmente vacío) y recortados (sin columnas
+  // finales sin ningún dato). El resto del estado es interactivo:
+  //   hiddenColumns : Set de nombres de columna ocultados a mano.
+  //   columnFilters : { nombreColumna: Set(valores EXCLUIDOS) }. Una
+  //                   columna sin entrada acá no tiene filtro (se ven
+  //                   todos sus valores). Guardar los EXCLUIDOS (no los
+  //                   incluidos) hace que un valor nuevo que aparezca en
+  //                   una sincronización futura se vea por defecto.
+  //   sortCriteria  : [{ name, dir }] en orden de prioridad (anidado).
+  //   filterHistory : { nombreColumna: [estadoAnterior, ...] } pila de
+  //                   estados previos de columnFilters[nombreColumna]
+  //                   (cada elemento es un Set clonado, o null si en ese
+  //                   momento no había filtro), para poder "Deshacer".
+  // Todo se guarda por NOMBRE de columna, no por posición, para no
+  // desarmarse si la planilla cambia el orden de las columnas.
+  let currentHeaders = [];
+  let currentDataRows = [];
+  const hiddenColumns = new Set();
+  const columnFilters = {};
+  const filterHistory = {};
+  let sortCriteria = [];
+  let currentMenuColumn = null;
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  // Valor de una celda SIN recortar espacios. Se usa para decidir
+  // existencia (fila o columna) porque ahí un espacio en blanco (" ")
+  // cuenta como "tiene un carácter" y no debe tratarse como vacío.
+  function cellValueRaw(row, colIndex) {
+    const cell = row.c[colIndex];
+    if (!cell || cell.v === null || cell.v === undefined) return "";
+    return String(cell.v);
+  }
+
+  // Valor de una celda recortando espacios. Se usa para el resto de las
+  // columnas, para mostrar los datos ya "prolijos".
+  function cellValue(row, colIndex) {
+    return cellValueRaw(row, colIndex).trim();
+  }
+
+  function isUrl(value) {
+    return URL_REGEX.test(value);
+  }
+
+  // A partir de una URL, arma un texto de enlace legible sin depender del
+  // nombre de la columna: usa el dominio (sin "www."), que suele bastar
+  // para identificar de qué servicio se trata (spotify, youtube, etc).
+  function linkLabelFromUrl(value) {
+    try {
+      const host = new URL(value).hostname.replace(/^www\./, "");
+      return host;
+    } catch (e) {
+      return "Abrir enlace";
+    }
+  }
+
+  function formatValue(value) {
+    if (value === "") return "";
+    if (isUrl(value)) {
+      const safeUrl = escapeHtml(value);
+      const label = escapeHtml(linkLabelFromUrl(value));
+      return `<a href="${safeUrl}" target="_blank" rel="noopener">${label}</a>`;
+    }
+    return escapeHtml(value);
+  }
+
+  // Comparador "natural" (entiende números dentro de texto) para ordenar.
+  function compareValues(a, b) {
+    return String(a).localeCompare(String(b), "es", { numeric: true, sensitivity: "base" });
+  }
+
+  // --- Filtro + orden -------------------------------------------------
+
+  function passesFilters(values) {
+    for (const colName in columnFilters) {
+      const excluded = columnFilters[colName];
+      if (!excluded || excluded.size === 0) continue;
+      const pos = currentHeaders.indexOf(colName);
+      if (pos === -1) continue;
+      if (excluded.has(values[pos])) return false;
+    }
+    return true;
+  }
+
+  function getVisibleRows() {
+    let rows = currentDataRows.filter(passesFilters);
+    if (sortCriteria.length > 0) {
+      rows = rows.slice().sort((rowA, rowB) => {
+        for (const crit of sortCriteria) {
+          const pos = currentHeaders.indexOf(crit.name);
+          if (pos === -1) continue;
+          const cmp = compareValues(rowA[pos] || "", rowB[pos] || "") * (crit.dir === "desc" ? -1 : 1);
+          if (cmp !== 0) return cmp;
+        }
+        return 0;
+      });
+    }
+    return rows;
+  }
+
+  function getUniqueValuesForColumn(colName) {
+    const colPos = currentHeaders.indexOf(colName);
+    return Array.from(new Set(currentDataRows.map(r => r[colPos]))).sort(compareValues);
+  }
+
+  // Guarda, ANTES de aplicar un cambio, el estado actual del filtro de una
+  // columna en su pila de historial, para poder "Deshacer" ese cambio
+  // puntual más adelante. null significa "en ese momento no había filtro".
+  function pushFilterHistory(colName) {
+    if (!filterHistory[colName]) filterHistory[colName] = [];
+    const snapshot = columnFilters[colName] ? new Set(columnFilters[colName]) : null;
+    filterHistory[colName].push(snapshot);
+    if (filterHistory[colName].length > 50) filterHistory[colName].shift();
+  }
+
+  function undoFilter(colName) {
+    const hist = filterHistory[colName];
+    if (!hist || hist.length === 0) return;
+    const prev = hist.pop();
+    if (prev === null) {
+      delete columnFilters[colName];
+    } else {
+      columnFilters[colName] = prev;
+    }
+  }
+
+  function toggleColumnFilterValue(colName, value, checked) {
+    pushFilterHistory(colName);
+    if (!columnFilters[colName]) columnFilters[colName] = new Set();
+    if (checked) {
+      columnFilters[colName].delete(value);
+    } else {
+      columnFilters[colName].add(value);
+    }
+    if (columnFilters[colName].size === 0) delete columnFilters[colName];
+  }
+
+  function deselectAllColumnValues(colName) {
+    pushFilterHistory(colName);
+    columnFilters[colName] = new Set(getUniqueValuesForColumn(colName));
+  }
+
+  function clearColumnFilter(colName) {
+    pushFilterHistory(colName);
+    delete columnFilters[colName];
+  }
+
+  function applySort(colName, dir) {
+    const idx = sortCriteria.findIndex(c => c.name === colName);
+    if (idx !== -1) {
+      if (sortCriteria[idx].dir === dir) {
+        // Click sobre la misma dirección ya activa: quita el orden de esta columna.
+        sortCriteria.splice(idx, 1);
+      } else {
+        sortCriteria[idx].dir = dir; // mantiene su prioridad, solo cambia dirección.
+      }
+    } else {
+      sortCriteria.push({ name: colName, dir }); // se agrega al final (menor prioridad).
+    }
+  }
+
+  // --- Menú de columna (ordenar / filtrar / ocultar) -------------------
+
+  function buildMenuHTML(colName) {
+    const uniqueValues = getUniqueValuesForColumn(colName);
+    const excluded = columnFilters[colName] || new Set();
+    const sortIdx = sortCriteria.findIndex(c => c.name === colName);
+    const sortDir = sortIdx !== -1 ? sortCriteria[sortIdx].dir : null;
+    const showPriority = sortCriteria.length > 1 && sortIdx !== -1;
+
+    const ascLabel = "Ordenar Ascendente (A-Z / 0-9)" + (sortDir === "asc" ? ` &#10003;${showPriority ? " (prioridad " + (sortIdx + 1) + ")" : ""}` : "");
+    const descLabel = "Ordenar Descendente (Z-A / 9-0)" + (sortDir === "desc" ? ` &#10003;${showPriority ? " (prioridad " + (sortIdx + 1) + ")" : ""}` : "");
+
+    const checklistHtml = uniqueValues.map(v => {
+      const checked = !excluded.has(v);
+      const label = v === "" ? "(en blanco)" : escapeHtml(v);
+      return `<label class="menu-filter-item"><input type="checkbox" data-value="${escapeHtml(v)}" ${checked ? "checked" : ""}><span>${label}</span></label>`;
+    }).join("");
+
+    const activeNote = excluded.size > 0
+      ? `<div class="menu-active-note">Filtro activo: ${uniqueValues.length - excluded.size} de ${uniqueValues.length} valores seleccionados</div>`
+      : "";
+
+    const canUndo = filterHistory[colName] && filterHistory[colName].length > 0;
+
+    return `
+      <div class="menu-section-title">Ordenar</div>
+      <button type="button" class="menu-item" data-sort-dir="asc">${ascLabel}</button>
+      <button type="button" class="menu-item" data-sort-dir="desc">${descLabel}</button>
+      <hr>
+      <div class="menu-section-title">Filtrar valores</div>
+      ${activeNote}
+      <button type="button" class="menu-clear-filter" data-action="deselect-all">Deseleccionar todos</button>
+      <button type="button" class="menu-clear-filter" data-action="clear-filter">Limpiar Filtro</button>
+      <button type="button" class="menu-clear-filter" data-action="undo-filter" ${canUndo ? "" : "disabled"}>Deshacer</button>
+      <div class="menu-filter-list">${checklistHtml || '<div style="color:#999;">Sin valores</div>'}</div>
+      <hr>
+      <button type="button" class="menu-item" data-action="hide-col">Ocultar columna</button>
+    `;
+  }
+
+  function positionMenu(anchorEl) {
+    const rect = anchorEl.getBoundingClientRect();
+    const menuWidth = menuEl.offsetWidth || 240;
+    const menuHeight = menuEl.offsetHeight || 300;
+    let left = rect.left;
+    const maxLeft = window.innerWidth - menuWidth - 8;
+    if (left > maxLeft) left = Math.max(8, maxLeft);
+    let top = rect.bottom + 4;
+    if (top + menuHeight > window.innerHeight) {
+      top = Math.max(8, rect.top - menuHeight - 4);
+    }
+    menuEl.style.left = left + "px";
+    menuEl.style.top = top + "px";
+  }
+
+  function openMenu(colName, anchorEl) {
+    currentMenuColumn = colName;
+    menuEl.innerHTML = buildMenuHTML(colName);
+    menuEl.style.display = "block";
+    positionMenu(anchorEl);
+  }
+
+  function refreshMenuInPlace() {
+    if (!currentMenuColumn) return;
+    menuEl.innerHTML = buildMenuHTML(currentMenuColumn);
+  }
+
+  function closeMenu() {
+    menuEl.style.display = "none";
+    currentMenuColumn = null;
+  }
+
+  menuEl.addEventListener("click", e => {
+    const sortBtn = e.target.closest("[data-sort-dir]");
+    if (sortBtn) {
+      applySort(currentMenuColumn, sortBtn.getAttribute("data-sort-dir"));
+      closeMenu();
+      renderTable();
+      return;
+    }
+    const deselectAllBtn = e.target.closest('[data-action="deselect-all"]');
+    if (deselectAllBtn) {
+      deselectAllColumnValues(currentMenuColumn);
+      renderTable();
+      refreshMenuInPlace();
+      return;
+    }
+    const clearBtn = e.target.closest('[data-action="clear-filter"]');
+    if (clearBtn) {
+      clearColumnFilter(currentMenuColumn);
+      renderTable();
+      refreshMenuInPlace();
+      return;
+    }
+    const undoBtn = e.target.closest('[data-action="undo-filter"]');
+    if (undoBtn) {
+      undoFilter(currentMenuColumn);
+      renderTable();
+      refreshMenuInPlace();
+      return;
+    }
+    const hideBtn = e.target.closest('[data-action="hide-col"]');
+    if (hideBtn) {
+      hiddenColumns.add(currentMenuColumn);
+      closeMenu();
+      renderTable();
+      return;
+    }
+  });
+
+  menuEl.addEventListener("change", e => {
+    if (e.target.matches('input[type="checkbox"][data-value]')) {
+      toggleColumnFilterValue(currentMenuColumn, e.target.getAttribute("data-value"), e.target.checked);
+      renderTable();
+      refreshMenuInPlace();
+    }
+  });
+
+  document.addEventListener("click", e => {
+    if (menuEl.style.display !== "block") return;
+    if (menuEl.contains(e.target)) return;
+    if (e.target.closest("th[data-col-index]")) return; // el propio header maneja su click
+    closeMenu();
+  });
+
+  wrapperEl.addEventListener("scroll", closeMenu, { passive: true });
+
+  // Encabezado clickeable: delegación de eventos sobre el <tr> del thead,
+  // así no hace falta reasignar listeners cada vez que se redibuja la tabla.
+  theadRowEl.addEventListener("click", e => {
+    const th = e.target.closest("th[data-col-index]");
+    if (!th) return;
+    const idx = Number(th.getAttribute("data-col-index"));
+    const colName = currentHeaders[idx];
+    if (currentMenuColumn === colName && menuEl.style.display === "block") {
+      closeMenu();
+    } else {
+      openMenu(colName, th);
+    }
+  });
+
+  // --- Dibujado de la tabla --------------------------------------------
+
+  function renderSortLegend() {
+    if (sortCriteria.length === 0) {
+      sortLegendEl.innerHTML = "";
+      return;
+    }
+    const desc = sortCriteria
+      .map((c, i) => `${i + 1}. ${escapeHtml(c.name)} ${c.dir === "asc" ? "&#8593;" : "&#8595;"}`)
+      .join(" &middot; ");
+    sortLegendEl.innerHTML = `Orden aplicado: ${desc} <a id="sheet-sync-clear-sort">Limpiar ordenamiento</a>`;
+    document.getElementById("sheet-sync-clear-sort").addEventListener("click", () => {
+      sortCriteria = [];
+      renderTable();
+    });
+  }
+
+  // Dibuja la tabla (encabezado + filas) a partir de currentHeaders y del
+  // resultado de aplicar filtros/orden sobre currentDataRows, respetando
+  // qué columnas están ocultas en este momento. No vuelve a pedir datos a
+  // la planilla: solo redibuja lo que ya está en memoria.
+  function renderTable() {
+    const visibleIndexes = currentHeaders
+      .map((_, i) => i)
+      .filter(i => !hiddenColumns.has(currentHeaders[i]));
+
+    theadRowEl.innerHTML = visibleIndexes
+      .map((i, viIdx) => {
+        const name = currentHeaders[i];
+        const stickyClass = viIdx === 0 ? " sticky-col" : "";
+        const sortIdx = sortCriteria.findIndex(c => c.name === name);
+        let sortBadge = "";
+        if (sortIdx !== -1) {
+          const arrow = sortCriteria[sortIdx].dir === "asc" ? "&#8593;" : "&#8595;";
+          const prio = sortCriteria.length > 1 ? sortIdx + 1 : "";
+          sortBadge = `<span class="th-badge">${arrow}${prio}</span>`;
+        }
+        const hasFilter = columnFilters[name] && columnFilters[name].size > 0;
+        const filterBadge = hasFilter ? '<span class="th-badge th-filter-badge" title="Filtro activo">F</span>' : "";
+        return `<th data-col-index="${i}" class="${stickyClass}" title="Click para ordenar, filtrar u ocultar">${escapeHtml(name)}${sortBadge}${filterBadge}</th>`;
+      })
+      .join("");
+
+    // Leyenda de columnas ocultas, tipo hipervínculo: "Mostrar NombreColumna".
+    if (hiddenColumns.size > 0) {
+      hiddenLegendEl.innerHTML = Array.from(hiddenColumns)
+        .map(name => `<a data-col-name="${escapeHtml(name)}">Mostrar ${escapeHtml(name)}</a>`)
+        .join("");
+      hiddenLegendEl.querySelectorAll("a").forEach(a => {
+        a.addEventListener("click", () => {
+          hiddenColumns.delete(a.getAttribute("data-col-name"));
+          renderTable();
+        });
+      });
+    } else {
+      hiddenLegendEl.innerHTML = "";
+    }
+
+    renderSortLegend();
+
+    const rowsToShow = getVisibleRows();
+
+    tbodyEl.innerHTML = rowsToShow
+      .map(values => {
+        const cellsHtml = visibleIndexes
+          .map((i, viIdx) => {
+            const stickyClass = viIdx === 0 ? ' class="sticky-col"' : "";
+            return `<td${stickyClass}>${formatValue(values[i])}</td>`;
+          })
+          .join("");
+        return `<tr>${cellsHtml}</tr>`;
+      })
+      .join("");
+
+    if (!tbodyEl.innerHTML) {
+      const colspan = visibleIndexes.length || 1;
+      const msg = currentDataRows.length === 0 ? "No se encontraron registros." : "Ningún registro coincide con los filtros aplicados.";
+      tbodyEl.innerHTML = `<tr><td colspan="${colspan}" style="color:#999;">${msg}</td></tr>`;
+    }
+
+    countEl.textContent = `Mostrando: ${rowsToShow.length} de ${currentDataRows.length} Registros`;
+
+    requestAnimationFrame(adjustStickyColumnWidth);
+  }
+
+  // Si el contenido de la 1ra columna visible (la que queda inmovilizada)
+  // es tan ancho que ocupa todo el ancho visible de la tabla (o más), se le
+  // pone un tope de ancho -con texto truncado con "..."- para que siempre
+  // quede espacio en pantalla para ver la 2da columna completa y al menos
+  // un fragmento de la 3ra. Si el contenido ya entra sin problema, no se
+  // toca nada.
+  function adjustStickyColumnWidth() {
+    const stickyCells = document.querySelectorAll(".sticky-col");
+    stickyCells.forEach(el => {
+      el.style.maxWidth = "";
+      el.style.whiteSpace = "";
+      el.style.overflow = "";
+      el.style.textOverflow = "";
+    });
+
+    const headerCells = theadRowEl.querySelectorAll("th");
+    if (headerCells.length < 2) return;
+
+    const wrapperWidth = wrapperEl.clientWidth;
+    const col1Width = headerCells[0].getBoundingClientRect().width;
+
+    if (col1Width < wrapperWidth) return;
+
+    const col2Width = headerCells[1].getBoundingClientRect().width;
+    const col3FragmentWidth = headerCells[2]
+      ? Math.min(headerCells[2].getBoundingClientRect().width, 60)
+      : 0;
+
+    const minStickyWidth = 80;
+    let maxAllowed = wrapperWidth - col2Width - col3FragmentWidth;
+    if (maxAllowed < minStickyWidth) maxAllowed = minStickyWidth;
+
+    stickyCells.forEach(el => {
+      el.style.maxWidth = maxAllowed + "px";
+      el.style.whiteSpace = "nowrap";
+      el.style.overflow = "hidden";
+      el.style.textOverflow = "ellipsis";
+      if (!el.getAttribute("title")) {
+        el.setAttribute("title", el.textContent);
+      }
+    });
+  }
+
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    closeMenu();
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(adjustStickyColumnWidth, 150);
+  });
+
+  async function syncSheet() {
+    statusEl.textContent = "Sincronizando...";
+    try {
+      const res = await fetch(url);
+      const text = await res.text();
+      // La respuesta viene envuelta como: google.visualization.Query.setResponse({...});
+      const json = JSON.parse(text.substring(text.indexOf("{"), text.lastIndexOf("}") + 1));
+      const rows = json.table.rows;
+      const cols = json.table.cols;
+      const totalCols = cols.length;
+
+      // Encabezados SIN recortar espacios: si la celda de encabezado tiene
+      // 1 espacio (" "), cuenta como "tiene un carácter" y la columna se
+      // muestra tal cual (con ese espacio). Si no tiene NINGÚN carácter,
+      // la columna entera queda excluida de la tabla.
+      const rawHeaders = cols.map(c => (c.label !== undefined && c.label !== null) ? String(c.label) : "");
+
+      const rawRows = rows.map(r => {
+        const rowValues = [];
+        for (let i = 0; i < totalCols; i++) {
+          rowValues.push(cellValueRaw(r, i));
+        }
+        return rowValues;
+      });
+
+      // Un registro (fila) se descarta por completo si la 1ra columna de
+      // la planilla (posición 0) no tiene NINGÚN carácter. Si tiene al
+      // menos un carácter -aunque sea un espacio en blanco " "- se toma.
+      const keptRawRows = rawRows.filter(values => values[0].length > 0);
+
+      // Para mostrar, el resto de las columnas se recortan de espacios.
+      const keptRows = keptRawRows.map(values =>
+        values.map((v, i) => (i === 0 ? v : v.trim()))
+      );
+
+      // Columnas a considerar: solo aquellas cuyo encabezado tiene al
+      // menos 1 carácter (aunque sea un espacio).
+      let columnIndexes = rawHeaders
+        .map((h, i) => i)
+        .filter(i => rawHeaders[i].length > 0);
+
+      // Se recorta el final: la última columna que se muestra es la
+      // última que tenga algún dato en ALGUNA fila.
+      let lastPosWithData = -1;
+      keptRows.forEach(values => {
+        for (let pos = columnIndexes.length - 1; pos > lastPosWithData; pos--) {
+          if (values[columnIndexes[pos]] !== "") {
+            lastPosWithData = pos;
+            break;
+          }
+        }
+      });
+      columnIndexes = columnIndexes.slice(0, lastPosWithData + 1);
+
+      currentHeaders = columnIndexes.map(i => rawHeaders[i]);
+      currentDataRows = keptRows.map(values => columnIndexes.map(i => values[i]));
+
+      // Limpieza de estado interactivo: si una columna dejó de existir
+      // (cambió la planilla), se descartan sus filtros/orden/historial/
+      // ocultamiento.
+      Object.keys(columnFilters).forEach(name => {
+        if (!currentHeaders.includes(name)) delete columnFilters[name];
+      });
+      Object.keys(filterHistory).forEach(name => {
+        if (!currentHeaders.includes(name)) delete filterHistory[name];
+      });
+      sortCriteria = sortCriteria.filter(c => currentHeaders.includes(c.name));
+      Array.from(hiddenColumns).forEach(name => {
+        if (!currentHeaders.includes(name)) hiddenColumns.delete(name);
+      });
+      if (currentMenuColumn && !currentHeaders.includes(currentMenuColumn)) closeMenu();
+
+      renderTable();
+
+      statusEl.textContent = "";
+      timeEl.textContent = new Date().toLocaleTimeString();
+    } catch (err) {
+      statusEl.textContent = "No se pudo sincronizar. Verificá que la hoja sea pública ('cualquiera con el enlace').";
+      console.error(err);
+    }
+  }
+
+  document.getElementById("sheet-sync-refresh").addEventListener("click", syncSheet);
+  syncSheet();
+  setInterval(syncSheet, REFRESH_MS);
+})();
+</script>
+
+</body>
+</html>
